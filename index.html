@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Desert Canyon Racer 3D - Pro Physics</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud-panel {
+            padding: 20px;
+            color: white;
+            text-shadow: 2px 2px 0 #000;
+            font-weight: bold;
+            font-size: 24px;
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* --- CONTROLS UI --- */
+        
+        #controls-area {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 180px;
+            pointer-events: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 40px; /* More padding for ergonomics */
+            box-sizing: border-box;
+        }
+
+        /* Steering Wheel Container */
+        #wheel-container {
+            width: 140px;
+            height: 140px;
+            pointer-events: auto;
+            position: relative;
+            background: rgba(0,0,0,0.2);
+            border-radius: 50%;
+            backdrop-filter: blur(4px);
+            border: 4px solid rgba(255,255,255,0.2);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        /* The Visual Wheel */
+        #steering-wheel {
+            width: 100%;
+            height: 100%;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="white" stroke-width="8"/><path d="M50 8 L50 20" stroke="red" stroke-width="8"/><circle cx="50" cy="50" r="12" fill="white" opacity="0.8"/><rect x="10" y="45" width="80" height="10" fill="white" opacity="0.8" rx="2"/><path d="M50 50 L50 90" stroke="white" stroke-width="10" opacity="0.8"/></svg>') no-repeat center center;
+            background-size: contain;
+            transition: transform 0.05s linear;
+        }
+
+        /* Brake Pedal */
+        #brake-pedal {
+            width: 70px;
+            height: 110px;
+            background: linear-gradient(to bottom, #d32f2f, #b71c1c);
+            border: 4px solid #fff;
+            border-radius: 10px;
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+            transform-origin: bottom center;
+            transition: transform 0.1s;
+        }
+        
+        #brake-pedal.pressed {
+            transform: scale(0.90) rotateX(15deg);
+            filter: brightness(0.8);
+        }
+
+        /* Screens */
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            color: #ff9800;
+            font-size: 3.5rem;
+            margin: 0 0 20px 0;
+            text-transform: uppercase;
+            font-style: italic;
+            text-shadow: 4px 4px 0px #3e2723;
+            text-align: center;
+        }
+
+        p { color: white; text-align: center; font-size: 1.2rem; }
+
+        button.menu-btn {
+            background: linear-gradient(to bottom, #ff9800, #f57c00);
+            border: none;
+            padding: 15px 50px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        button.menu-btn:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+
+        #debug-log {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 10px;
+            font-family: monospace;
+            pointer-events: none;
+        }
+
+    </style>
+    <!-- Three.js CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="hud-panel">
+            <div id="score-display">DIST: 0m</div>
+            <div id="speed-display">0 KM/H</div>
+        </div>
+
+        <div id="controls-area">
+            <div id="wheel-container">
+                <div id="steering-wheel"></div>
+            </div>
+            <div id="brake-pedal">BRAKE</div>
+        </div>
+    </div>
+
+    <div id="debug-log">Physics: Real</div>
+
+    <div id="start-screen">
+        <h1>Canyon Run</h1>
+        <p>Realistic Steering Enabled.<br>Turn wheel to angle tires.</p>
+        <button id="start-btn" class="menu-btn">Start Engine</button>
+        <div id="loading-msg" style="margin-top: 15px; color: #ddd;">Loading Assets...</div>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1>CRASHED!</h1>
+        <p id="final-score">Distance: 0m</p>
+        <button id="restart-btn" class="menu-btn">Race Again</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- CONFIGURATION ---
+        const CAR_MODEL_URL = './assets/car.glb'; 
+
+        const COLORS = {
+            sky: 0x87CEEB,
+            ground: 0xE6C288, 
+            road: 0x333333,
+            barrier: 0xFFFFFF,
+            barrierStripe: 0xFF0000,
+            mountain: 0x8B4513 
+        };
+
+        const PHYSICS_CONFIG = {
+            maxSpeed: 85, 
+            acceleration: 25,
+            brakingPower: 80, 
+            friction: 10, // Natural slow down
+            maxSteeringAngle: 0.04, // Radians per frame approx
+            steeringRestoringForce: 2.0, // How fast wheel centers itself
+            carYawSpeed: 2.0 // Multiplier for rotation
+        };
+
+        const GAME_CONFIG = {
+            roadWidth: 20,
+            segmentLength: 30,
+            renderDistance: 40, 
+            fogDensity: 0.006
+        };
+
+        // --- GLOBALS ---
+        let scene, camera, renderer;
+        let clock, delta;
+        let carContainer, carMesh;
+        let roadSegments = [];
+        let score = 0;
+        let distanceTraveled = 0;
+        let isGameActive = false;
+        let isGameOver = false;
+        let carLoaded = false;
+        
+        // PHYSICS STATE
+        const carState = {
+            speed: 0,
+            x: 0,
+            z: 0,
+            yaw: 0, // Rotation of car body relative to road
+            wheelAngle: 0 // Current visual rotation of steering wheel (-1 to 1)
+        };
+
+        // INPUT STATE
+        const input = { 
+            targetWheelAngle: 0.0, // Where the user is holding the wheel (-1 to 1)
+            brake: false,
+            isTouchingWheel: false
+        };
+
+        // UI Elements
+        const scoreEl = document.getElementById('score-display');
+        const speedEl = document.getElementById('speed-display');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreEl = document.getElementById('final-score');
+        const loadingMsg = document.getElementById('loading-msg');
+        const debugLog = document.getElementById('debug-log');
+        const startBtn = document.getElementById('start-btn');
+        const brakeBtn = document.getElementById('brake-pedal');
+        const wheelObj = document.getElementById('steering-wheel');
+        const wheelContainer = document.getElementById('wheel-container');
+
+        function log(msg) {
+            console.log(msg);
+            debugLog.innerText = msg;
+        }
+
+        function init() {
+            try {
+                // Scene
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(COLORS.sky);
+                scene.fog = new THREE.FogExp2(COLORS.ground, GAME_CONFIG.fogDensity);
+
+                // Camera
+                camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 5, 10);
+
+                // Renderer
+                renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.shadowMap.enabled = true;
+                document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+                // Lighting
+                const hemiLight = new THREE.HemisphereLight(0xffffff, COLORS.ground, 0.6);
+                scene.add(hemiLight);
+                const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+                dirLight.position.set(100, 200, 50);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 1024;
+                dirLight.shadow.mapSize.height = 1024;
+                dirLight.shadow.camera.left = -100; dirLight.shadow.camera.right = 100;
+                dirLight.shadow.camera.top = 100; dirLight.shadow.camera.bottom = -100;
+                scene.add(dirLight);
+
+                // Ground
+                const planeGeo = new THREE.PlaneGeometry(2000, 2000);
+                const planeMat = new THREE.MeshLambertMaterial({ color: COLORS.ground });
+                const plane = new THREE.Mesh(planeGeo, planeMat);
+                plane.rotation.x = -Math.PI / 2;
+                plane.position.y = -0.1;
+                plane.receiveShadow = true;
+                scene.add(plane);
+
+                clock = new THREE.Clock();
+
+                // Listeners
+                window.addEventListener('resize', onWindowResize);
+                document.addEventListener('keydown', onKeyDown);
+                document.addEventListener('keyup', onKeyUp);
+                setupTouchControls();
+
+                startBtn.addEventListener('click', startGame);
+                document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+                loadCarSystem();
+                renderer.setAnimationLoop(animate);
+                
+            } catch (e) {
+                log("Error in Init: " + e.message);
+            }
+        }
+
+        function setupTouchControls() {
+            // BRAKE
+            const activateBrake = (e) => { e.preventDefault(); input.brake = true; brakeBtn.classList.add('pressed'); };
+            const releaseBrake = (e) => { e.preventDefault(); input.brake = false; brakeBtn.classList.remove('pressed'); };
+            
+            brakeBtn.addEventListener('touchstart', activateBrake);
+            brakeBtn.addEventListener('touchend', releaseBrake);
+            brakeBtn.addEventListener('mousedown', activateBrake);
+            brakeBtn.addEventListener('mouseup', releaseBrake);
+
+            // STEERING WHEEL
+            let startX = 0;
+            let currentRotation = 0;
+            const sensitivity = 200; // Pixels to rotate 90 degrees
+
+            wheelContainer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                input.isTouchingWheel = true;
+                startX = e.touches[0].clientX;
+                // Capture where the wheel is currently to avoid snapping
+                currentRotation = input.targetWheelAngle * sensitivity; 
+            }, {passive: false});
+
+            wheelContainer.addEventListener('touchmove', (e) => {
+                if(!input.isTouchingWheel) return;
+                e.preventDefault();
+                const deltaX = startX - e.touches[0].clientX; // Inverted X for logical turning (drag left = turn left)
+                
+                // Calculate new angle based on drag
+                let val = (currentRotation + deltaX) / sensitivity;
+                
+                // Clamp -1 to 1 (left lock to right lock)
+                if (val > 1) val = 1;
+                if (val < -1) val = -1;
+                
+                input.targetWheelAngle = val;
+                
+            }, {passive: false});
+
+            const resetWheel = (e) => {
+                if (e) e.preventDefault();
+                input.isTouchingWheel = false;
+                // Note: We don't reset targetWheelAngle immediately to 0 here.
+                // We let the physics "restoring force" handle the centering in the animate loop
+                // for that realistic "letting go of the wheel" feeling.
+            };
+
+            wheelContainer.addEventListener('touchend', resetWheel);
+            wheelContainer.addEventListener('touchcancel', resetWheel);
+        }
+
+        function loadCarSystem() {
+            carContainer = new THREE.Group();
+            scene.add(carContainer);
+            
+            const loader = new GLTFLoader();
+            const fallbackTimeout = setTimeout(() => {
+                if(!carLoaded) { createFallbackCar(); carLoaded = true; }
+            }, 2500);
+
+            loader.load(CAR_MODEL_URL, (gltf) => {
+                clearTimeout(fallbackTimeout);
+                if(carLoaded) return;
+                carMesh = gltf.scene;
+                const box = new THREE.Box3().setFromObject(carMesh);
+                const size = box.getSize(new THREE.Vector3());
+                const scale = 3.5 / (size.z || 1); 
+                carMesh.scale.set(scale, scale, scale);
+                carMesh.position.y = 0;
+                carMesh.rotation.y = Math.PI; 
+                carMesh.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
+                carContainer.add(carMesh);
+                carLoaded = true;
+                loadingMsg.innerText = "Ready!";
+            }, undefined, (err) => {
+                clearTimeout(fallbackTimeout);
+                if(!carLoaded) { createFallbackCar(); carLoaded = true; }
+            });
+        }
+
+        function createFallbackCar() {
+            while(carContainer.children.length > 0) carContainer.remove(carContainer.children[0]); 
+            carMesh = new THREE.Group();
+            const bGeo = new THREE.BoxGeometry(1.8, 0.8, 3.5);
+            const bMat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const body = new THREE.Mesh(bGeo, bMat); body.position.y = 0.6; body.castShadow = true;
+            carMesh.add(body);
+            const cGeo = new THREE.BoxGeometry(1.6, 0.6, 1.5);
+            const cMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+            const cabin = new THREE.Mesh(cGeo, cMat); cabin.position.set(0, 1.2, -0.3); cabin.castShadow = true;
+            carMesh.add(cabin);
+            carContainer.add(carMesh);
+        }
+
+        class RoadSegment {
+            constructor(zPos, type, previousSegment) {
+                this.container = new THREE.Group();
+                this.zPos = zPos;
+                this.type = type; 
+                this.length = GAME_CONFIG.segmentLength;
+                this.startX = previousSegment ? previousSegment.endX : 0;
+                this.startAngle = previousSegment ? previousSegment.endAngle : 0;
+                
+                let curveAmount = 0;
+                if(type === 'curveLeft') curveAmount = 0.5;
+                if(type === 'curveRight') curveAmount = -0.5;
+
+                this.endAngle = this.startAngle + curveAmount;
+                const angleAvg = (this.startAngle + this.endAngle) / 2;
+                this.endX = this.startX + (Math.sin(angleAvg) * this.length);
+
+                this.buildMesh();
+                this.addObstacles();
+                this.addEnvironment();
+                scene.add(this.container);
+            }
+
+            buildMesh() {
+                const w = GAME_CONFIG.roadWidth / 2;
+                const x1 = this.startX - w; const x2 = this.startX + w; const z1 = this.zPos;
+                const x3 = this.endX - w; const x4 = this.endX + w; const z2 = this.zPos - this.length;
+                const vertices = new Float32Array([ x1, 0.05, z1, x2, 0.05, z1, x3, 0.05, z2, x2, 0.05, z1, x4, 0.05, z2, x3, 0.05, z2 ]);
+                
+                const roadGeo = new THREE.BufferGeometry();
+                roadGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                roadGeo.computeVertexNormals();
+                const roadMat = new THREE.MeshPhongMaterial({ color: COLORS.road });
+                this.mesh = new THREE.Mesh(roadGeo, roadMat);
+                this.mesh.receiveShadow = true;
+                this.container.add(this.mesh);
+
+                const sW = 0.5;
+                const sx1 = this.startX - sW; const sx2 = this.startX + sW;
+                const sx3 = this.endX - sW; const sx4 = this.endX + sW;
+                const sVerts = new Float32Array([ sx1, 0.06, z1, sx2, 0.06, z1, sx3, 0.06, z2, sx2, 0.06, z1, sx4, 0.06, z2, sx3, 0.06, z2 ]);
+                const sGeo = new THREE.BufferGeometry();
+                sGeo.setAttribute('position', new THREE.BufferAttribute(sVerts, 3));
+                this.container.add(new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({ color: 0xffffff })));
+                this.bounds = { zStart: z1, zEnd: z2, leftStart: x1, rightStart: x2, leftEnd: x3, rightEnd: x4 };
+            }
+
+            addObstacles() {
+                const numBarriers = 3;
+                const bGeo = new THREE.BoxGeometry(1, 1.5, 4);
+                const bMat = new THREE.MeshLambertMaterial({ color: COLORS.barrierStripe }); 
+                for(let i=0; i<numBarriers; i++) {
+                    const t = i / numBarriers;
+                    const cX_L = THREE.MathUtils.lerp(this.startX, this.endX, t) - (GAME_CONFIG.roadWidth/2) - 1;
+                    const cX_R = THREE.MathUtils.lerp(this.startX, this.endX, t) + (GAME_CONFIG.roadWidth/2) + 1;
+                    const cZ = THREE.MathUtils.lerp(this.zPos, this.zPos - this.length, t);
+                    const bL = new THREE.Mesh(bGeo, bMat); bL.position.set(cX_L, 0.75, cZ); bL.castShadow = true;
+                    this.container.add(bL);
+                    const bR = bL.clone(); bR.position.set(cX_R, 0.75, cZ);
+                    this.container.add(bR);
+                }
+            }
+
+            addEnvironment() {
+                if (Math.random() > 0.3) return;
+                const geo = new THREE.ConeGeometry(Math.random() * 10 + 5, Math.random() * 30 + 10, 4);
+                const mat = new THREE.MeshLambertMaterial({color: COLORS.mountain});
+                const rock = new THREE.Mesh(geo, mat);
+                const side = Math.random() > 0.5 ? 1 : -1;
+                const offset = (GAME_CONFIG.roadWidth/2) + 20 + Math.random() * 30;
+                const midX = (this.startX + this.endX)/2;
+                rock.position.set(midX + (offset * side), 0, this.zPos - (this.length/2));
+                rock.castShadow = true;
+                this.container.add(rock);
+            }
+            destroy() { scene.remove(this.container); this.container.traverse(o => { if(o.isMesh) { o.geometry.dispose(); o.material.dispose(); } }); }
+        }
+
+        function startGame() {
+            if(!carLoaded) { createFallbackCar(); carLoaded = true; }
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            
+            // RESET PHYSICS
+            carState.speed = 0;
+            carState.x = 0;
+            carState.z = 0;
+            carState.yaw = 0;
+            carState.wheelAngle = 0;
+            input.targetWheelAngle = 0;
+            
+            isGameActive = true;
+            isGameOver = false;
+            distanceTraveled = 0;
+
+            if(carContainer) {
+                carContainer.position.set(0, 0, 0);
+                carContainer.rotation.set(0, 0, 0);
+            }
+            roadSegments.forEach(s => s.destroy()); roadSegments = [];
+            let prev = null;
+            for(let i=0; i<GAME_CONFIG.renderDistance; i++) {
+                const seg = new RoadSegment(i === 0 ? 0 : prev.zPos - prev.length, 'straight', prev);
+                roadSegments.push(seg); prev = seg;
+            }
+        }
+        function resetGame() { startGame(); }
+
+        function spawnNextSegment() {
+            const last = roadSegments[roadSegments.length - 1];
+            const rand = Math.random();
+            let type = 'straight';
+            if (last.endAngle > 1.0) type = 'curveRight';
+            else if (last.endAngle < -1.0) type = 'curveLeft';
+            else { if(rand < 0.2) type = 'curveLeft'; else if(rand < 0.4) type = 'curveRight'; }
+            roadSegments.push(new RoadSegment(last.zPos - last.length, type, last));
+            if(roadSegments.length > GAME_CONFIG.renderDistance + 5) roadSegments.shift().destroy();
+        }
+
+        function checkCollisions() {
+            if(!carContainer) return;
+            const cx = carState.x;
+            const cz = carState.z; // Using physics Z
+            const seg = roadSegments.find(s => cz <= s.bounds.zStart && cz >= s.bounds.zEnd);
+            if(seg) {
+                const t = (seg.bounds.zStart - cz) / seg.length;
+                const rLeft = THREE.MathUtils.lerp(seg.bounds.leftStart, seg.bounds.leftEnd, t);
+                const rRight = THREE.MathUtils.lerp(seg.bounds.rightStart, seg.bounds.rightEnd, t);
+                if (cx < rLeft + 1.5 || cx > rRight - 1.5) crash();
+            }
+        }
+        function crash() { isGameActive = false; isGameOver = true; finalScoreEl.innerText = `Distance: ${Math.floor(score)}m`; gameOverScreen.classList.remove('hidden'); }
+
+        function animate() {
+            if(!renderer) return;
+            delta = clock.getDelta();
+
+            if (isGameActive && !isGameOver && carContainer) {
+                // --- REALISTIC PHYSICS STEP ---
+
+                // 1. Acceleration / Braking
+                if (input.brake) {
+                    if (carState.speed > 0) {
+                        carState.speed -= PHYSICS_CONFIG.brakingPower * delta;
+                        if(carState.speed < 0) carState.speed = 0;
+                    }
+                } else {
+                    if (carState.speed < PHYSICS_CONFIG.maxSpeed) {
+                        carState.speed += PHYSICS_CONFIG.acceleration * delta;
+                    }
+                    // Air Friction
+                    carState.speed -= (carState.speed * 0.1) * delta;
+                }
+
+                // 2. Steering Physics
+                // If user is not touching wheel, auto-center it
+                if (!input.isTouchingWheel) {
+                    input.targetWheelAngle = THREE.MathUtils.lerp(input.targetWheelAngle, 0, delta * PHYSICS_CONFIG.steeringRestoringForce);
+                }
+
+                // Smoothly interpolate current wheel angle to target (mechanical delay)
+                carState.wheelAngle = THREE.MathUtils.lerp(carState.wheelAngle, input.targetWheelAngle, delta * 10);
+
+                // Update Visual Steering Wheel
+                wheelObj.style.transform = `rotate(${carState.wheelAngle * 90}deg)`;
+
+                // 3. Ackermann-style Turning Logic
+                // The car rotates (yaws) based on: Speed * SteeringAngle
+                // You can't turn if you aren't moving!
+                if (carState.speed > 1.0) {
+                    const turnFactor = carState.wheelAngle * PHYSICS_CONFIG.maxSteeringAngle;
+                    // At higher speeds, turning is slightly dampened to prevent spinning out, but still active
+                    carState.yaw += turnFactor * (carState.speed / 20) * delta * 5;
+                    
+                    // Limit Yaw to keep it playable (so you don't drive backwards)
+                    carState.yaw = THREE.MathUtils.clamp(carState.yaw, -0.8, 0.8);
+                    
+                    // Natural straightening force (caster angle)
+                    carState.yaw = THREE.MathUtils.lerp(carState.yaw, 0, delta * 0.5); 
+                }
+
+                // 4. Calculate Velocity Vector
+                // Forward vector based on Yaw
+                const vx = Math.sin(carState.yaw) * carState.speed;
+                const vz = Math.cos(carState.yaw) * carState.speed;
+
+                // 5. Apply Position
+                carState.x -= vx * delta; // -X is left in Threejs usually depending on cam
+                carState.z -= vz * delta; // -Z is forward
+
+                distanceTraveled = Math.abs(carState.z);
+                score = distanceTraveled;
+
+                // 6. Apply to Mesh
+                carContainer.position.x = carState.x;
+                carContainer.position.z = carState.z;
+                
+                // Rotation: Base yaw + Body roll based on centrifugal force
+                const bodyRoll = (carState.wheelAngle * carState.speed * 0.005);
+                carContainer.rotation.y = carState.yaw; // Facing direction
+                
+                if(carMesh) {
+                     // Tilt body slightly when turning
+                    carMesh.rotation.z = bodyRoll;
+                }
+
+                // --- LOGIC UPDATES ---
+                const lastSeg = roadSegments[roadSegments.length - 1];
+                if (Math.abs(carState.z - lastSeg.zPos) < (GAME_CONFIG.renderDistance * GAME_CONFIG.segmentLength) - 100) spawnNextSegment();
+                
+                checkCollisions();
+                scoreEl.innerText = `DIST: ${Math.floor(score)}m`;
+                speedEl.innerText = `${Math.floor(carState.speed * 2)} KM/H`;
+            }
+
+            // Camera Logic - Smooth Follow
+            if(carContainer && camera) {
+                // Target position behind car, aligned with car's yaw
+                const camDist = 12;
+                const camHeight = 5;
+                
+                // Calculate camera spot behind car based on rotation
+                const targetCamX = carState.x + Math.sin(carState.yaw) * camDist;
+                const targetCamZ = carState.z + Math.cos(carState.yaw) * camDist;
+
+                camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, delta * 3);
+                camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetCamX, delta * 3);
+                camera.position.y = camHeight;
+                
+                // Look ahead of the car
+                const lookAtX = carState.x - Math.sin(carState.yaw) * 20;
+                const lookAtZ = carState.z - Math.cos(carState.yaw) * 20;
+                
+                camera.lookAt(lookAtX, 0, lookAtZ);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onKeyDown(e) { 
+            if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { input.targetWheelAngle = 1.0; input.isTouchingWheel = true; }
+            if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { input.targetWheelAngle = -1.0; input.isTouchingWheel = true; }
+            if(e.key === ' ' || e.key === 'ArrowDown' || e.key === 's') { input.brake = true; brakeBtn.classList.add('pressed'); }
+        }
+        function onKeyUp(e) { 
+            if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { input.isTouchingWheel = false; }
+            if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { input.isTouchingWheel = false; }
+            if(e.key === ' ' || e.key === 'ArrowDown' || e.key === 's') { input.brake = false; brakeBtn.classList.remove('pressed'); }
+        }
+        
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        init();
+    </script>
+</body>
+</html>
